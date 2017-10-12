@@ -81,6 +81,7 @@ class AstWalker(NodeVisitor):
                                   r"\s*:\s*)$", IGNORECASE)
     __argsRE = regexpCompile(r"^\s*(?P<name>\w+)\s*(?P<type>\(?\S*\)?)?\s*"
                              r"(?:-|:)+\s+(?P<desc>.+)$")
+    __argparamRE = regexpCompile(r"^#\s+@(param|property)\s+(\w+)\s+(.+)$", IGNORECASE)
     __returnsStartRE = regexpCompile(r"^\s*(?:Return|Yield)s:\s*$", IGNORECASE)
     __raisesStartRE = regexpCompile(r"^\s*(Raises|Exceptions|See Also):\s*$",
                                     IGNORECASE)
@@ -187,6 +188,8 @@ class AstWalker(NodeVisitor):
 
         lines = []
         timeToSend = False
+        inArgBlock = False
+        inParBlock = False
         inCodeBlock = False
         inSection = False
         prefix = ''
@@ -213,6 +216,43 @@ class AstWalker(NodeVisitor):
                             firstLineNum = lineNum
                             line = line.replace(match.group(1), doxyTag)
                             timeToSend = True
+
+                    if inArgBlock:
+                        line = line.rstrip()
+                        match = AstWalker.__blanklineRE.match(line)
+                        if match:
+                            indent = theArgIndent+self.options.tablength
+                        else:
+                            indent = len(line.expandtabs(self.options.tablength)) - \
+                                len(line.expandtabs(self.options.tablength).lstrip())
+                        if indent <= theArgIndent:
+                            if inCodeBlock:
+                                lines[-1] += "{0}# @endcode".format(linesep)
+                                inCodeBlock = False
+                            inArgBlock = False
+                            if inParBlock:
+                                lines[-1] += "{0}# @endparblock".format(linesep)
+                            inParBlock = False
+                            theArgIndent = 0
+                        elif indent == theArgIndent+self.options.tablength:
+                            if inCodeBlock:
+                                lines[-1] += "{0}# @endcode".format(linesep)
+                                inCodeBlock = False
+                            firstLine = AstWalker.__argparamRE.match(lines[-1])
+                            if prefix.startswith("@param") and firstLine:
+                                lines[-1] = "# @{0}\t{1}".format(firstLine.group(1), firstLine.group(2), linesep)
+
+                                lines[-1] += "{0}# @parblock".format(linesep)
+                                lines[-1] += "{1}# {0}".format(firstLine.group(3), linesep)
+                                inParBlock = True
+                            lines[-1] += "{1}# {0}".format(line[theArgIndent+self.options.tablength:], linesep)
+                            continue
+                        else:
+                            if not inCodeBlock:
+                                lines[-1] += "{0}# @code".format(linesep)
+                                inCodeBlock = True
+                            lines[-1] += "{1}# {0}".format(line[theArgIndent+self.options.tablength:], linesep)
+                            continue
 
                     if inSection:
                         # The last line belonged to a section.
@@ -252,6 +292,9 @@ class AstWalker(NodeVisitor):
                             if match and not inCodeBlock:
                                 # We've got something that looks like an item /
                                 # description pair.
+                                inArgBlock = True
+                                theArgIndent = len(line.expandtabs(self.options.tablength)) - \
+                                        len(line.expandtabs(self.options.tablength).lstrip())
                                 if 'property' in prefix:
                                     line = '# {0}\t{1[name]}{2}# {1[desc]}'.format(
                                         prefix, match.groupdict(), linesep)

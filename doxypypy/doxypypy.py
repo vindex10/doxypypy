@@ -367,7 +367,8 @@ class AstWalker(NodeVisitor):
                                                     lines[-1], inCodeBlock)
                                                 inCodeBlockObj[0] = inCodeBlock
                                                 lines.append('#' + line)
-                                                lines[-1] += "{0}# \parblock".format(linesep)
+                                                lines[-1] += "{0}# @parblock".format(linesep)
+                                                inParBlock = True
                                                 continue
                                             elif prefix:
                                                 match = AstWalker.__singleListItemRE.match(line)
